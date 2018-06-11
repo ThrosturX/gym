@@ -505,6 +505,29 @@ for game in ['air_raid', 'alien', 'amidar', 'assault', 'asterix', 'asteroids', '
             nondeterministic=nondeterministic,
         )
 
+# ATC
+# ----------------------------------------
+
+register(
+    id='ACSimple-v0',
+    entry_point='gym.envs.atc:ACSimpleEnv',
+    max_episode_steps=200,
+    reward_threshold=25.0,
+)
+
+register(
+    id='ACSimple_PredictArrival-v0',
+    entry_point='gym.envs.atc:ACSimple_PredictArrivalEnv',
+    max_episode_steps=200,
+    reward_threshold=25.0,
+)
+
+register(
+    id='ACSimple_CheckConflict-v0',
+    entry_point='gym.envs.atc:ACSimple_CheckConflictEnv',
+    max_episode_steps=200,
+    reward_threshold=25.0,
+)
 
 # Unit test
 # ---------
