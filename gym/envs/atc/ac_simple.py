@@ -24,14 +24,13 @@ class ACSimpleEnv(gym.Env):
     
         self.viewer = None
 
-        self.action_space = spaces.MultiDiscrete([0,self.nr_aircraft,-1,1]) # aircraft id, speed adjustment
+        self.action_space = spaces.MultiDiscrete([self.nr_aircraft,2,2]) # aircraft id, speed adjustment, speed increase/decrease
         aircraft_observation_lo = np.repeat([0, 0, 0, -10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
         aircraft_observation_hi = np.repeat([self.nr_aircraft-1, 2000000, 340, 10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
         self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
 
         self.seed(1)
         self.target_time = self.np_random.uniform(low=500, high=1000)
-        #self.target_time = None
         self.reset()
 
     def seed(self, seed=None):
@@ -43,7 +42,8 @@ class ACSimpleEnv(gym.Env):
         reward = 0
         if action[0] < self.nr_aircraft and action[1] != 0:
             reward -= 1
-            self.aircraft[int(action[0])].adjust_speed(action[1])
+            speed_change = 1 if action[2] > 0 else -1
+            self.aircraft[int(action[0])].adjust_speed(speed_change)
             self.ttas[int(action[0])] = self.aircraft[int(action[0])].tta
             self.order = np.argsort(self.ttas)
         
