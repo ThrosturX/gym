@@ -19,15 +19,16 @@ class ACSimpleEnv(gym.Env):
 
     def __init__(self):
         self.nr_aircraft = 5
-        self.separation = 300 # seconds
+        self.separation = 100 # seconds
         self.dt = 1 # seconds
-    
+        self.time_step = 0
+
         self.viewer = None
 
-        self.action_space = spaces.MultiDiscrete([self.nr_aircraft,2,2]) # aircraft id, speed adjustment, speed increase/decrease
+        self.action_space = spaces.MultiDiscrete([self.nr_aircraft,2,2]) # aircraft id, speed adjustment true/false, speed increase/decrease
         aircraft_observation_lo = np.repeat([0, 0, 0, -10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
         aircraft_observation_hi = np.repeat([self.nr_aircraft-1, 2000000, 340, 10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
-        self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
+        self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi, dtype=np.float32)
 
         self.seed(1)
         self.target_time = self.np_random.uniform(low=500, high=1000)
@@ -38,7 +39,6 @@ class ACSimpleEnv(gym.Env):
         return [seed]
 
     def step(self, action):
-        self.last_landing -= self.dt
         reward = 0
         if action[0] < self.nr_aircraft and action[1] != 0:
             reward -= 1
@@ -51,12 +51,13 @@ class ACSimpleEnv(gym.Env):
             j = self.order[i]
             
             if self.aircraft[j].update(self.dt): # airplane landing
-                sep = abs(self.aircraft[j].tta - self.last_landing)
+                # The planes must not land too soon after each other
+                sep = abs(self.last_landing - self.time_step)
                 if sep < self.separation: # separation violated
                     reward -= 100 # todo: make larger errors weigh heavier
                 else:
                     reward += 10
-                self.last_landing = max(self.last_landing, self.aircraft[j].tta)
+                self.last_landing = self.time_step
             
             self.ttas[j] = self.aircraft[j].tta
             self.state[i*4+0] = self.aircraft[j].id
@@ -65,11 +66,12 @@ class ACSimpleEnv(gym.Env):
             self.state[i*4+3] = self.aircraft[j].tta
         
         done = self.state[self.nr_aircraft*4-1] <= 0
+        self.time_step += 1
 
         return self.state, reward, done, {}
 
     def reset(self, target_time=None):
-        self.last_landing = -self.separation*10
+        self.last_landing = -self.separation
         self.aircraft = np.empty(self.nr_aircraft, dtype=object)
         self.ttas = np.empty(self.nr_aircraft)
         for i in range(0, self.nr_aircraft):
@@ -123,10 +125,8 @@ class ACSimpleEnv(gym.Env):
                 icon.add_attr(self.icontrans[i])
                 self.viewer.add_geom(icon)
 
-                
         for i in range(0, self.nr_aircraft):
-            self.icontrans[i].set_translation(self.aircraft[i].distance*xscale, (self.aircraft[i].tta+world_height/2) * yscale) # screen_height / 2
-
+            self.icontrans[i].set_translation(self.aircraft[i].distance*xscale, ((self.aircraft[i].distance / 100) + world_height/2) * yscale)
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
     def close(self):
@@ -156,7 +156,6 @@ class ACSimpleSolver():
                 self.aircraft[i].tta = observation[4*i+3]
             else:
                 self.aircraft[i].tta = self.predictor.step([self.aircraft[i].distance, self.aircraft[i].velocity], 0, False)
-            print(i)
             if i > 0 and self.aircraft[i].tta > 0 and self.detector.step([self.aircraft[i-1].tta, self.aircraft[i].tta], 0, False):
                 if self.np_random.uniform() < 0.5: # TODO: fix greedy algorithm
                     return [self.aircraft[i-1].id, 1] # make first aircraft go faster
@@ -295,7 +294,7 @@ class Aircraft():
             self.velocity = min(self.max_velocity, self.velocity*1.1)
         else:
             return
-        self.tta = self.seconds_to_arrival()
+        self.tta = np.floor(self.seconds_to_arrival())
     
     def update(self, dt):
         self.tta -= dt
@@ -307,4 +306,3 @@ class Aircraft():
             self.velocity = 0
             return True
         return False
-            
