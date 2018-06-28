@@ -7,7 +7,7 @@ Simple Arrival Control environment, adapted from /classic_control/continuous_mou
 
 import math
 import gym
-from gym import spaces
+import gym.spaces
 from gym.utils import seeding
 import numpy as np
 
@@ -25,10 +25,10 @@ class ACSimpleEnv(gym.Env):
 
         self.viewer = None
 
-        self.action_space = spaces.MultiDiscrete([self.nr_aircraft,2,2]) # aircraft id, speed adjustment true/false, speed increase/decrease
+        self.action_space = gym.spaces.MultiDiscrete([self.nr_aircraft,2,2]) # aircraft id, speed adjustment true/false, speed increase/decrease
         aircraft_observation_lo = np.repeat([0, 0, 0, -10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
         aircraft_observation_hi = np.repeat([self.nr_aircraft-1, 2000000, 340, 10000], self.nr_aircraft) # aircraft id, distance, speed, arrival time
-        self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi, dtype=np.float32)
+        self.observation_space = gym.spaces.Box(aircraft_observation_lo, aircraft_observation_hi, dtype=np.float32)
 
         self.seed(1)
         self.target_time = self.np_random.uniform(low=500, high=1000)
@@ -40,14 +40,24 @@ class ACSimpleEnv(gym.Env):
 
     def step(self, action):
         reward = 0
-        if action[0] < self.nr_aircraft and action[1] != 0:
-            reward -= 1
-            speed_change = 1 if action[2] > 0 else -1
-            self.aircraft[int(action[0])].adjust_speed(speed_change)
-            self.ttas[int(action[0])] = self.aircraft[int(action[0])].tta
-            self.order = np.argsort(self.ttas)
-        
-        for i in range(0, self.nr_aircraft):
+
+        for i in range(self.nr_aircraft):
+            if action[0] == i and action[1] != 0: # Plane==i and has some action
+                reward -= 1
+                if action[2] > 0:
+                    speed_change = 1
+                    color = Color.RED
+                else:
+                    speed_change = -1
+                    color = Color.GEEN
+                self.aircraft[i].adjust_speed(speed_change)
+                self.ttas[i] = self.aircraft[i].tta
+                self.order = np.argsort(self.ttas)
+            else:
+                color = Color.BLACK
+            self.aircraft[i].color = color
+
+        for i in range(self.nr_aircraft):
             j = self.order[i]
             
             if self.aircraft[j].update(self.dt): # airplane landing
@@ -118,14 +128,19 @@ class ACSimpleEnv(gym.Env):
             
             self.viewer.add_geom(rendering.Line((0, screen_height/2), (screen_width, screen_height/2)))
             
+            self.icons = np.empty(self.nr_aircraft, dtype=object)
             self.icontrans = np.empty(self.nr_aircraft, dtype=object)
             for i in range(0, self.nr_aircraft):
-                self.icontrans[i] = rendering.Transform()
+                transform = rendering.Transform()
                 icon = rendering.make_circle(2)
-                icon.add_attr(self.icontrans[i])
+                icon.add_attr(transform)
                 self.viewer.add_geom(icon)
 
+                self.icons[i] = icon
+                self.icontrans[i] = transform
+
         for i in range(0, self.nr_aircraft):
+            self.icons[i].set_color(*self.aircraft[i].color)
             self.icontrans[i].set_translation(self.aircraft[i].distance*xscale, ((self.aircraft[i].distance / 100) + world_height/2) * yscale)
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
@@ -173,10 +188,10 @@ class ACSimple_PredictArrivalEnv(gym.Env): # in: (distance, speed), out: tta
     def __init__(self):
         self.viewer = None
 
-        self.action_space = spaces.Box(-10000, 10000) # seconds to arrival
+        self.action_space = gym.spaces.Box(-10000, 10000) # seconds to arrival
         aircraft_observation_lo = np.repeat([0, 0], 1) # id, distance, speed
         aircraft_observation_hi = np.repeat([2000000, 340], 1) # id, distance, speed
-        self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
+        self.observation_space = gym.spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
 
         self.seed()
         self.reset()
@@ -220,10 +235,10 @@ class ACSimple_CheckConflictEnv(gym.Env): # in: (tta, tta), out: yes/no
         self.separation = 60
         self.viewer = None
 
-        self.action_space = spaces.Box(0, 1) # conflict or not
+        self.action_space = gym.spaces.Box(0, 1) # conflict or not
         aircraft_observation_lo = np.repeat([-10000], 2) # seconds to arrival
         aircraft_observation_hi = np.repeat([10000], 2) # seconds to arrival
-        self.observation_space = spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
+        self.observation_space = gym.spaces.Box(aircraft_observation_lo, aircraft_observation_hi)
 
         self.seed()
         self.reset()
@@ -276,11 +291,12 @@ class ACSimple_CheckConflictSolver():
 class Aircraft():
     def __init__(self, id):
         self.id = id
-        self.velocity = 0.0 # in m/s
-        self.distance = 0.0 # in meters
-        self.tta = 0.0 # time to arrival in seconds
+        self.velocity = 0.0         # in m/s
+        self.distance = 0.0         # in meters
+        self.tta = 0.0              # time to arrival in seconds
         self.min_velocity = 100
         self.max_velocity = 340
+        self.color = Color.BLACK    # Aircraft color (R, B, G, Transparency)
         
     def seconds_to_arrival(self):
         return self.distance / self.velocity
@@ -306,3 +322,8 @@ class Aircraft():
             self.velocity = 0
             return True
         return False
+
+class Color():
+    RED = (1, 0, 0)
+    GEEN = (0, 1, 0)
+    BLACK = (0, 0, 0)
