@@ -46,10 +46,10 @@ class ACSimpleEnv(gym.Env):
                 reward -= 1
                 if action[2] > 0:
                     speed_change = 1
-                    color = Color.RED
+                    color = Color.GEEN
                 else:
                     speed_change = -1
-                    color = Color.GEEN
+                    color = Color.RED
                 self.aircraft[i].adjust_speed(speed_change)
                 self.ttas[i] = self.aircraft[i].tta
                 self.order = np.argsort(self.ttas)
